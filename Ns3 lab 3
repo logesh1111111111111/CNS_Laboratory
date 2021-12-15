@@ -1,0 +1,71 @@
+1 	 	#include "ns3/core-module.h"
+ 2 	 	#include "ns3/network-module.h"
+ 3 	 	#include "ns3/internet-module.h"
+ 4 	 	#include "ns3/point-to-point-module.h"
+ 5 	 	#include "ns3/applications-module.h"
+ 6 	 	#include "ns3/csma-module.h"
+ 7 	 	#include "ns3/network-application-helper.h"
+ 8 	 	
+ 9 	 	using namespace ns3;
+ 10 	 	
+ 11 	 	NS_LOG_COMPONENT_DEFINE ("3rd Lab Program");
+ 12 	 	
+ 13 	 	int 
+ 14 	 	main (int argc, char *argv[])
+ 15 	 	{
+ 16 	 	  CommandLine cmd;
+ 17 	 	  cmd.Parse (argc, argv);
+ 18 	 	  
+ 19 	 	  NS_LOG_INFO ("Create nodes.");
+ 20 	 	  NodeContainer nodes;
+ 21 	 	  nodes.Create (4);
+ 22 	 	
+ 23 	 	  CsmaHelper csma;
+ 24 	 	  csma.SetChannelAttribute ("DataRate", StringValue ("5Mbps"));
+ 25 	 	  csma.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.0001)));
+ 26 	 	
+ 27 	 	  NetDeviceContainer devices;
+ 28 	 	  devices = csma.Install (nodes);
+ 29 	 	
+ 30 	 	  Ptr<RateErrorModel> em = CreateObject<RateErrorModel> ();
+ 31 	 	  em->SetAttribute ("ErrorRate", DoubleValue (0.00001));
+ 32 	 	  devices.Get (1)->SetAttribute ("ReceiveErrorModel", PointerValue (em));
+ 33 	 	
+ 34 	 	  InternetStackHelper stack;
+ 35 	 	  stack.Install (nodes);
+ 36 	 	
+ 37 	 	  Ipv4AddressHelper address;
+ 38 	 	  address.SetBase ("10.1.1.0", "255.255.255.0");
+ 39 	 	  Ipv4InterfaceContainer interfaces = address.Assign (devices);
+ 40 	 	
+ 41 	 	  uint16_t sinkPort = 8080;
+ 42 	 	
+ 43 	 	  Address sinkAddress (InetSocketAddress (interfaces.GetAddress (1), sinkPort));
+ 44 	 	  PacketSinkHelper packetSinkHelper ("ns3::TcpSocketFactory", InetSocketAddress (Ipv4Address::GetAny (), sinkPort));
+ 45 	 	
+ 46 	 	  ApplicationContainer sinkApps = packetSinkHelper.Install (nodes.Get (1));
+ 47 	 	  sinkApps.Start (Seconds (0.));
+ 48 	 	  sinkApps.Stop (Seconds (20.));
+ 49 	 	
+ 50 	 	  Ptr<Socket> ns3TcpSocket = Socket::CreateSocket (nodes.Get (0), TcpSocketFactory::GetTypeId ());
+ 51 	 	  ns3TcpSocket->TraceConnectWithoutContext ("CongestionWindow", MakeCallback (&CwndChange));
+ 52 	 	
+ 53 	 	  Ptr<NetworkApplication> app = CreateObject<NetworkApplication> ();
+ 54 	 	  app->Setup (ns3TcpSocket, sinkAddress, 1040, 1000, DataRate ("50Mbps"));
+ 55 	 	  nodes.Get (0)->AddApplication (app);
+ 56 	 	  app->SetStartTime (Seconds (1.));
+ 57 	 	  app->SetStopTime (Seconds (20.));
+ 58 	 	
+ 59 	 	  devices.Get (1)->TraceConnectWithoutContext ("PhyRxDrop", MakeCallback (&RxDrop));
+ 60 	 	
+ 61 	 	  AsciiTraceHelper ascii;
+ 62 	 	  csma.EnableAsciiAll (ascii.CreateFileStream ("3lan.tr"));
+ 63 	 	  csma.EnablePcapAll (std::string ("3lan"), true);
+ 64 	 	
+ 65 	 	  Simulator::Stop (Seconds (20));
+ 66 	 	  Simulator::Run ();
+ 67 	 	  Simulator::Destroy ();
+ 68 	 	
+ 69 	 	  return 0;
+ 70 	 	}
+ 71 	 	
